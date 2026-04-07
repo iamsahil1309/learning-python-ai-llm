@@ -1,7 +1,6 @@
 from transformers import pipeline
 
-
-pipe = pipeline("image-text-to-text", model="google/gemma-4-31B-it")
+pipe = pipeline("image-text-to-text", model="google/gemma-3-4b-it")
 messages = [
     {
         "role": "user",
