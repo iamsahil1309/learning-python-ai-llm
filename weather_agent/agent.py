@@ -1,127 +1,182 @@
 from openai import OpenAI
 import json
 import requests
-# from dotenv import load_dotenv
+import time
 
-# load_dotenv()
+# ---------------- CONFIG ----------------
 
 client = OpenAI(
-    api_key="AIzaSyBRl_i-n5XO0tpTp691AZNYyNOuG2k8KaQ",
+    api_key="AIzaSyBA2CmScTwY2EAs6UCuvugpot5uTUUG0FE",
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 
-def get_Weather(city : str) :
-    url = f"https://wttr.in/{city.lower()}?format=%C+%t"
-    response = requests.get(url)
+# ---------------- TOOL ----------------
 
-    if response.status_code == 200 :
-        return f"The weather in {city} is {response.text}"
+def get_weather(city: str):
+    try:
+        url = f"https://wttr.in/{city.lower()}?format=%C+%t"
+        response = requests.get(url)
 
-    return "Something went wrong"
+        if response.status_code == 200:
+            return f"The weather in {city} is {response.text}"
+
+        return "Weather API failed"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+
+available_tools = {
+    "get_weather": get_weather
+}
+
+# ---------------- SYSTEM PROMPT ----------------
 
 SYSTEM_PROMPT = """
-    You're an expert AI Assistant in resolving user queries using chain of thought.
-    You MUST return ONLY ONE JSON object per response.
-    you work on START,PLAN, and OUTPUT steps.
-    You need to first PLAN what needs to be done. The PLAN can be multiple steps.
-    Once you thing enough PLAN has been done, finally you can give an OUTPUT.
-    You can also call a tool if required from the list of available tools.
+You are a strict step-by-step AI agent.
 
-    Rules :
-    - Strictly Follow the given JSON output format
-    - Only run one step at a time.
-    - The sequence of steps is START (where use gives and input), PLAN (That can be multpile times) and finally OUTPUT (which is going to the displayed to the user).
+You MUST return ONLY ONE valid JSON object per response.
 
-    Output JSON Format:
-    { "step" : "START" | "PLAN" | "OUTPUT" | "TOOL", "content" : "string"}
+FLOW:
+START → PLAN → TOOL → OBSERVE → OUTPUT
 
-    Availabe tools:
-    - get_weather(city : str):Takes city name as an input string and returns the weather information about the city.
+RULES:
+- One step per response only
+- Never return list or multiple JSON objects
+- Never use tools except "get_weather"
+- Never use "google_search" or any other tool
+- After OBSERVE, you MUST produce OUTPUT soon (max 1 PLAN step allowed)
+- Do NOT loop PLAN forever
 
-    Example 1:
-    START : Hey, Can you solve 2 + 3 * 5 / 10
-    PLAN :  {"step" : "PLAN": "content": "Seems like user is interested in math problem"}
-    PLAN : {"step" : "PLAN": "content": "looking at the problem, we should solve this using BODMAS method"}
-    PLAN : {"step" : "PLAN": "content": "Yes, The BODMAS is correct thing to be done here"}
-    PLAN : {"step" : "PLAN": "content": "first  we must mutliply 3 * 5 which is 15"}
-    PLAN : {"step" : "PLAN": "content": "Now the new equation is 2 + 15 / 10"}
-    PLAN : {"step" : "PLAN": "content": "We must perform divide that is 15 / 10 = 1.5"}
-    PLAN : {"step" : "PLAN": "content": "Now the new equation is 2 + 1.5"}
-    PLAN : {"step" : "PLAN": "content": "Now finally lets perform the add 3.5"}
-    PLAN : {"step" : "PLAN": "content": "Great, we have solved and finally left with 3.5 as ans"}
-    OUTPUT : {"step" : "OUTPUT": "content": "3.5"}
+TOOL AVAILABLE:
+get_weather(city: str)
 
-    Example 2:
-    START : What is the weather of Delhi?
-    PLAN :  {"step" : "PLAN": "content": "Seems like user is interested in getting weather of Delhi in India"}
-    PLAN : {"step" : "PLAN": "content": ""}
-    PLAN : {"step" : "PLAN": "content": "Yes, The BODMAS is correct thing to be done here"}
-    PLAN : {"step" : "PLAN": "content": "first  we must mutliply 3 * 5 which is 15"}
-    PLAN : {"step" : "PLAN": "content": "Now the new equation is 2 + 15 / 10"}
-    PLAN : {"step" : "PLAN": "content": "We must perform divide that is 15 / 10 = 1.5"}
-    PLAN : {"step" : "PLAN": "content": "Now the new equation is 2 + 1.5"}
-    PLAN : {"step" : "PLAN": "content": "Now finally lets perform the add 3.5"}
-    PLAN : {"step" : "PLAN": "content": "Great, we have solved and finally left with 3.5 as ans"}
-    OUTPUT : {"step" : "OUTPUT": "content": "3.5"}
+OUTPUT FORMAT:
+{
+ "step": "START" | "PLAN" | "TOOL" | "OUTPUT",
+ "content": "string",
+ "tool": "string",
+ "input": "string"
+}
 """
 
-# SYSTEM_PROMPT = """
-# You are an AI assistant that works step-by-step.
+# ---------------- HELPERS ----------------
 
-# You MUST return ONLY ONE JSON object per response.
+def safe_parse(text):
+    try:
+        data = json.loads(text)
 
-# Steps allowed:
-# - START
-# - PLAN
-# - OUTPUT
+        if isinstance(data, list):
+            data = data[0]
 
-# Flow:
-# 1. First response = START
-# 2. Then multiple PLAN steps
-# 3. Finally OUTPUT
+        if not isinstance(data, dict):
+            return None
 
-# Rules:
-# - One step per response
-# - Only valid JSON
-# - No extra text
-
-# Format:
-# {"step": "START" | "PLAN" | "OUTPUT", "content": "string"}
-# """
+        return data
+    except:
+        return None
 
 
-print("\n\n\n")
+def call_llm(messages):
+    retries = 3
+    delay = 5
+
+    for i in range(retries):
+        try:
+            response = client.chat.completions.create(
+                model="gemini-3-flash-preview",
+                response_format={"type": "json_object"},
+                messages=messages
+            )
+            return response.choices[0].message.content
+
+        except Exception as e:
+            print(f"⚠️ Retry {i+1} after {delay}s...")
+            time.sleep(delay)
+            delay *= 2
+
+    raise Exception("API failed")
+
+
+# ---------------- MAIN ----------------
+
+print("\n🤖 Weather Agent Started\n")
 
 message_history = [
-    {"role" : "system", "content" : SYSTEM_PROMPT}
+    {"role": "system", "content": SYSTEM_PROMPT}
 ]
 
-user_query = input("👉🏽")
-message_history.append({"role": "user", "content" : user_query})
+user_query = input("👉🏽 ")
+message_history.append({"role": "user", "content": user_query})
 
-while True :
-    response = client.chat.completions.create(
-    model="gemini-3-flash-preview",
-    response_format={"type": "json_object"},
-    messages=message_history
-)
-    
-    raw_result = response.choices[0].message.content
-    message_history.append({"role":"assistant", "content" : raw_result})
-    parsed_result = json.loads(raw_result)
+max_steps = 8
+last_steps = []
 
-    if parsed_result.get("step") == "START":
-        print("🔥", parsed_result.get("content"))
-        continue
+for _ in range(max_steps):
 
-    if parsed_result.get("step") == "PLAN":
-        print("🧠", parsed_result.get("content"))
-        continue
+    raw = call_llm(message_history)
+    print("\n📦 RAW:", raw)
 
-    if parsed_result.get("step") == "OUTPUT":
-        print("🤖", parsed_result.get("content"))
+    parsed = safe_parse(raw)
+
+    if not parsed:
+        print("❌ Invalid JSON")
         break
 
+    message_history.append({"role": "assistant", "content": raw})
 
+    step = parsed.get("step")
+    last_steps.append(step)
 
+    if len(last_steps) > 5:
+        last_steps.pop(0)
 
+    # detect infinite PLAN loop
+    if last_steps.count("PLAN") >= 5:
+        print("⚠️ Too many PLAN steps → stopping")
+        break
+
+    # ---------------- START ----------------
+    if step == "START":
+        print(f"START  → {parsed.get('content')}")
+
+    # ---------------- PLAN ----------------
+    elif step == "PLAN":
+        print(f"PLAN   → {parsed.get('content')}")
+
+    # ---------------- TOOL ----------------
+    elif step == "TOOL":
+        tool = parsed.get("tool")
+        tool_input = parsed.get("input")
+
+        print(f"TOOL   → {tool}({tool_input})")
+
+        if tool == "get_weather":
+            result = get_weather(tool_input)
+        else:
+            result = "❌ Invalid tool used"
+
+        print(f"RESULT → {result}")
+
+        message_history.append({
+            "role": "developer",
+            "content": json.dumps({
+                "step": "OBSERVE",
+                "tool": tool,
+                "input": tool_input,
+                "output": result
+            })
+        })
+
+    # ---------------- OUTPUT ----------------
+    elif step in ["OUTPUT", "FINAL"]:
+        print(f"\nOUTPUT → {parsed.get('content')}")
+        break
+
+    else:
+        print("❌ Unknown step → stopping")
+        break
+
+    time.sleep(2)
+
+else:
+    print("⚠️ Max steps reached")
