@@ -3,7 +3,7 @@ import json
 import requests
 
 client = OpenAI(
-    api_key="AIzaSyCI1VgsKJmLkm_XAsLxbGWtQDUMNmXyoMc",
+    api_key="AIzaSyArvZvzC_9CabFd3EyFCH_wOqRUfxqMJUs",
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 
@@ -43,7 +43,6 @@ Rules:
 
 Example:
 User: weather in Delhi
-
 PLAN: user wants weather
 PLAN: need to fetch data
 TOOL: get_weather:Delhi
