@@ -1,9 +1,12 @@
 from openai import OpenAI
 import json
 import requests
+from pydantic import BaseModel, Field
+from typing import Optional
+
 
 client = OpenAI(
-    api_key="AIzaSyArvZvzC_9CabFd3EyFCH_wOqRUfxqMJUs",
+    api_key="AIzaSyDUA1kfP7qwgxxInUApLnbIjrSdC7XSoY0",
     base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
 )
 
@@ -50,6 +53,11 @@ PLAN: received data
 OUTPUT: final weather explanation
 """
 
+class MyOutputFormat(BaseModel) :
+    step : str = Field(..., description="The id of the step. Example : PLAN, OUTPUT, TOOL")
+    content: Optional[str] = Field(None, description="The optional string content")
+    tool : Optional[str] = Field(None, description="The ID of the tool to call.")
+
 
 message_history = [{"role": "system", "content": SYSTEM_PROMPT}]
 
@@ -57,19 +65,20 @@ user_query = input("👉 ")
 message_history.append({"role": "user", "content": user_query})
 
 while True:
-    response = client.chat.completions.create(
+    response = client.chat.completions.parse(
         model="gemini-2.5-flash",
-        response_format={"type": "json_object"},
+        response_format=MyOutputFormat,
         messages=message_history
     )
 
     raw = response.choices[0].message.content
     message_history.append({"role": "assistant", "content": raw})
 
-    parsed = json.loads(raw) #string -> dictionary
+    # parsed = json.loads(raw) #string -> dictionary
+    parsed = response.choices[0].message.parsed
 
-    step = parsed.get("step")
-    content = parsed.get("content")
+    step = parsed.step
+    content = parsed.content
 
     if step == "PLAN":
         print("🧠", content)
