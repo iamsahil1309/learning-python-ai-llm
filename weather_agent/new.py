@@ -66,7 +66,7 @@ while True:
     raw = response.choices[0].message.content
     message_history.append({"role": "assistant", "content": raw})
 
-    parsed = json.loads(raw)
+    parsed = json.loads(raw) #string -> dictionary
 
     step = parsed.get("step")
     content = parsed.get("content")
